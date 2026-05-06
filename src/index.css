@@ -1,0 +1,194 @@
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap');
+
+:root {
+  --pink: #ff8fab;
+  --pink-light: #ffe5ec;
+  --pink-dark: #fb6f92;
+  --purple: #c77dff;
+  --cream: #fff0f3;
+  --text: #5c2a38;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Fredoka', sans-serif;
+  background: linear-gradient(135deg, var(--pink-light) 0%, var(--cream) 100%);
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: var(--text);
+}
+
+.container {
+  text-align: center;
+  padding: 2rem;
+  max-width: 400px;
+  width: 100%;
+}
+
+.title {
+  font-size: 2.5rem;
+  color: var(--pink-dark);
+  margin-bottom: 1.5rem;
+  text-shadow: 2px 2px 0 var(--pink-light);
+}
+
+.menu {
+  background: white;
+  padding: 2rem;
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(251, 111, 146, 0.2);
+}
+
+.btn {
+  display: block;
+  width: 100%;
+  padding: 1rem 2rem;
+  margin: 0.5rem 0;
+  font-family: inherit;
+  font-size: 1.1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 15px;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.btn:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+.btn-primary {
+  background: var(--pink-dark);
+  color: white;
+}
+
+.btn-secondary {
+  background: var(--purple);
+  color: white;
+}
+
+.btn-copy {
+  background: var(--pink-light);
+  color: var(--text);
+}
+
+.btn-reset {
+  background: var(--pink);
+  color: white;
+  margin-top: 1rem;
+}
+
+.btn-disconnect {
+  background: transparent;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.info {
+  font-size: 1rem;
+  color: var(--text);
+  margin: 1rem 0 0.5rem;
+}
+
+.code-box {
+  width: 100%;
+  height: 120px;
+  padding: 0.75rem;
+  border: 2px solid var(--pink-light);
+  border-radius: 10px;
+  font-family: monospace;
+  font-size: 0.75rem;
+  resize: none;
+  background: var(--cream);
+  color: var(--text);
+}
+
+.code-box:focus {
+  outline: none;
+  border-color: var(--pink);
+}
+
+.status {
+  font-size: 0.9rem;
+  color: var(--pink-dark);
+  margin-top: 1rem;
+}
+
+.error {
+  color: #e63946;
+  margin-top: 1rem;
+}
+
+.game-area {
+  background: white;
+  padding: 2rem;
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(251, 111, 146, 0.2);
+}
+
+.turn-indicator {
+  font-size: 1.3rem;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+  color: var(--pink-dark);
+}
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  max-width: 300px;
+  margin: 0 auto;
+}
+
+.cell {
+  aspect-ratio: 1;
+  font-size: 2.5rem;
+  font-family: 'Fredoka', sans-serif;
+  font-weight: 600;
+  border: none;
+  border-radius: 15px;
+  background: var(--pink-light);
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--text);
+}
+
+.cell:hover:not(:disabled) {
+  background: var(--pink);
+  transform: scale(1.05);
+}
+
+.cell:disabled {
+  cursor: default;
+}
+
+.cell-x {
+  background: var(--pink-dark);
+  color: white;
+}
+
+.cell-o {
+  background: var(--purple);
+  color: white;
+}
+
+.cell-winning {
+  animation: win-pulse 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes win-pulse {
+  from { transform: scale(1); }
+  to { transform: scale(1.08); }
+}
