@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "peerjs": "^1.5.5",
     "solid-js": "^1.9.12"
   },
   "devDependencies": {
