@@ -1,4 +1,3 @@
-import type { Component } from 'solid-js';
 import type { Score } from '../game';
 
 type ScoreBoardProps = {
@@ -6,7 +5,7 @@ type ScoreBoardProps = {
   onReset: () => void;
 };
 
-const ScoreBoard: Component<ScoreBoardProps> = (props) => {
+export function ScoreBoard(props: ScoreBoardProps) {
   return (
     <div class="score-board">
       <div class="score-item">
@@ -24,6 +23,4 @@ const ScoreBoard: Component<ScoreBoardProps> = (props) => {
       </div>
     </div>
   );
-};
-
-export default ScoreBoard;
+}

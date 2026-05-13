@@ -1,4 +1,4 @@
-import type { Component } from 'solid-js';
+import { For } from 'solid-js';
 import type { Board, Player } from '../game';
 
 type GameBoardProps = {
@@ -9,29 +9,36 @@ type GameBoardProps = {
   isMyTurn: boolean;
 };
 
-const GameBoard: Component<GameBoardProps> = (props) => {
-  const isWinningCell = (row: number, col: number) => {
+export function GameBoard(props: GameBoardProps) {
+  function isWinningCell(row: number, col: number) {
     return props.winningCells?.some(([r, c]) => r === row && c === col) ?? false;
-  };
+  }
 
   return (
     <div class="game-board">
       <div class="current-turn">Current turn: {props.currentPlayer}</div>
       <div class="board">
-        {props.board.map((row, rowIdx) =>
-          row.map((cell, colIdx) => (
-            <button
-              class={`cell ${cell ? `cell-${cell.toLowerCase()}` : ''} ${isWinningCell(rowIdx, colIdx) ? 'winning-cell' : ''}`}
-              onClick={() => props.onCellClick(rowIdx, colIdx)}
-              disabled={!props.isMyTurn || cell !== null}
-            >
-              {cell}
-            </button>
-          ))
-        )}
+        <For each={props.board}>
+          {(row, rowIdx) => (
+            <For each={row}>
+              {(cell, colIdx) => (
+                <button
+                  classList={{
+                    cell: true,
+                    'cell-x': cell === 'X',
+                    'cell-o': cell === 'O',
+                    'winning-cell': isWinningCell(rowIdx(), colIdx()),
+                  }}
+                  onClick={() => props.onCellClick(rowIdx(), colIdx())}
+                  disabled={!props.isMyTurn || cell !== null}
+                >
+                  {cell}
+                </button>
+              )}
+            </For>
+          )}
+        </For>
       </div>
     </div>
   );
-};
-
-export default GameBoard;
+}

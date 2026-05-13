@@ -1,88 +1,85 @@
-const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+import Peer from 'peerjs';
+import type { DataConnection } from 'peerjs';
+import type { Player } from './game';
 
-export type Message = 
+export type Message =
+  | { type: 'init'; hostPlayer: Player }
+  | { type: 'assign'; hostPlayer: Player }
   | { type: 'move'; row: number; col: number }
   | { type: 'rematch' }
   | { type: 'chat'; text: string }
   | { type: 'reset-scores' };
 
-let peerConnection: RTCPeerConnection | null = null;
-let dataChannel: RTCDataChannel | null = null;
+let peer: Peer | null = null;
+let conn: DataConnection | null = null;
+
 let onMessageCallback: ((message: Message) => void) | null = null;
 let onConnectCallback: (() => void) | null = null;
 let onDisconnectCallback: (() => void) | null = null;
 
-function encodeSDP(desc: RTCSessionDescriptionInit): string {
-  const json = JSON.stringify(desc);
-  const base64 = btoa(unescape(encodeURIComponent(json)));
-  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
+function setupConnection(connection: DataConnection) {
+  conn = connection;
 
-function decodeSDP(str: string): RTCSessionDescriptionInit {
-  const base64 = str.replace(/-/g, '+').replace(/_/g, '/');
-  const padded = base64 + '=='.slice(0, (4 - base64.length % 4) % 4);
-  const json = atob(padded);
-  return JSON.parse(json);
-}
-
-function setupDataChannel(channel: RTCDataChannel) {
-  channel.onopen = () => onConnectCallback?.();
-  channel.onclose = () => onDisconnectCallback?.();
-  channel.onmessage = (e) => {
-    const message: Message = JSON.parse(e.data);
-    onMessageCallback?.(message);
-  };
-}
-
-function waitForIceGathering(pc: RTCPeerConnection): Promise<void> {
-  return new Promise(resolve => {
-    if (pc.iceGatheringState === 'complete') {
-      resolve();
-    } else {
-      pc.onicegatheringstatechange = () => {
-        if (pc.iceGatheringState === 'complete') resolve();
-      };
-    }
+  connection.on('data', (data: unknown) => {
+    onMessageCallback?.(data as Message);
   });
+
+  connection.on('close', () => {
+    onDisconnectCallback?.();
+  });
+
+  if (connection.open) {
+    onConnectCallback?.();
+  } else {
+    connection.on('open', () => {
+      onConnectCallback?.();
+    });
+  }
 }
 
 export async function createHost(): Promise<string> {
-  peerConnection = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-  dataChannel = peerConnection.createDataChannel('game');
-  setupDataChannel(dataChannel);
+  peer = new Peer();
 
-  const offer = await peerConnection.createOffer();
-  await peerConnection.setLocalDescription(offer);
-  await waitForIceGathering(peerConnection);
+  return new Promise((resolve, reject) => {
+    peer!.on('open', (id: string) => {
+      resolve(id);
+    });
 
-  return encodeSDP(peerConnection.localDescription!);
+    peer!.on('connection', (connection: DataConnection) => {
+      setupConnection(connection);
+    });
+
+    peer!.on('error', (err) => {
+      reject(err);
+    });
+  });
 }
 
-export async function joinGame(offerStr: string): Promise<string> {
-  const offerDesc = decodeSDP(offerStr);
-  peerConnection = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-  
-  peerConnection.ondatachannel = (e) => {
-    dataChannel = e.channel;
-    setupDataChannel(dataChannel);
-  };
+export async function joinGame(hostId: string): Promise<void> {
+  peer = new Peer();
 
-  await peerConnection.setRemoteDescription(offerDesc);
-  const answer = await peerConnection.createAnswer();
-  await peerConnection.setLocalDescription(answer);
-  await waitForIceGathering(peerConnection);
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('Connection timed out'));
+    }, 15000);
 
-  return encodeSDP(peerConnection.localDescription!);
-}
+    peer!.on('open', () => {
+      const connection = peer!.connect(hostId);
+      setupConnection(connection);
+      clearTimeout(timeout);
+      resolve();
+    });
 
-export async function completeConnection(answerStr: string): Promise<void> {
-  const answerDesc = decodeSDP(answerStr);
-  await peerConnection!.setRemoteDescription(answerDesc);
+    peer!.on('error', (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
+  });
 }
 
 export function sendMessage(message: Message): void {
-  if (dataChannel?.readyState === 'open') {
-    dataChannel.send(JSON.stringify(message));
+  if (conn?.open) {
+    conn.send(message);
   }
 }
 
@@ -97,3 +94,5 @@ export function onConnect(callback: () => void): void {
 export function onDisconnect(callback: () => void): void {
   onDisconnectCallback = callback;
 }
+
+

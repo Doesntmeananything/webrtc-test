@@ -1,11 +1,9 @@
-import { createSignal, onMount, Show, Switch, Match, type Component } from 'solid-js';
-import GameBoard from './components/GameBoard';
-import ScoreBoard from './components/ScoreBoard';
-import Chat from './components/Chat';
-import QRCodeDisplay from './components/QRCodeDisplay';
+import { createSignal, Show, Switch, Match } from 'solid-js';
+import { GameBoard } from './components/GameBoard';
+import { ScoreBoard } from './components/ScoreBoard';
+import { Chat } from './components/Chat';
 import { type Board, type Player, createInitialBoard, createInitialScore, makeMove, checkWinner, checkDraw, getWinningCells } from './game';
-import { createHost, joinGame, completeConnection, sendMessage, onMessage, onConnect, onDisconnect, type Message } from './webrtc';
-import './index.css';
+import { createHost, joinGame, sendMessage, onMessage, onConnect, onDisconnect, type Message } from './webrtc';
 
 type ChatMessage = {
   text: string;
@@ -13,80 +11,60 @@ type ChatMessage = {
   player: Player;
 };
 
-type ConnectionStep = 'initial' | 'host-offer-ready' | 'guest-offer-detected' | 'guest-answer-ready' | 'guest-page-reloaded' | 'connected';
+type ConnectionStep = 'initial' | 'host-waiting' | 'connected';
 
-const App: Component = () => {
-  let pasteAnswerRef: HTMLInputElement | undefined;
+export function App() {
   const [connectionStep, setConnectionStep] = createSignal<ConnectionStep>('initial');
   const [player, setPlayer] = createSignal<Player | null>(null);
+  const [isHost, setIsHost] = createSignal(false);
   const [board, setBoard] = createSignal<Board>(createInitialBoard());
   const [currentPlayer, setCurrentPlayer] = createSignal<Player>('X');
   const [score, setScore] = createSignal(createInitialScore());
   const [chatMessages, setChatMessages] = createSignal<ChatMessage[]>([]);
-  const [offerCode, setOfferCode] = createSignal('');
   const [winningCells, setWinningCells] = createSignal<[number, number][] | null>(null);
   const [gameOver, setGameOver] = createSignal(false);
-  const [appUrl, setAppUrl] = createSignal('');
-  const [answerCode, setAnswerCode] = createSignal('');
+  const [roomCode, setRoomCode] = createSignal('');
+  const [joinCode, setJoinCode] = createSignal('');
+  const [isJoining, setIsJoining] = createSignal(false);
+  const [joinError, setJoinError] = createSignal('');
   const [copyStatus, setCopyStatus] = createSignal('');
 
-  const isMyTurn = () => {
+  function isMyTurn() {
     return connectionStep() === 'connected' && player() === currentPlayer() && !gameOver();
-  };
+  }
 
-  const getBaseUrl = () => {
-    return window.location.origin + window.location.pathname;
-  };
-
-  const handleCopy = (text: string) => {
+  function handleCopy(text: string) {
     navigator.clipboard.writeText(text).then(() => {
       setCopyStatus('Copied!');
       setTimeout(() => setCopyStatus(''), 2000);
     });
-  };
+  }
 
-  const handleCreateHost = async () => {
-    // Clear any previous guest state
-    localStorage.removeItem('ttt-offer');
-    localStorage.removeItem('ttt-answer');
-    
-    setConnectionStep('host-offer-ready');
-    const offer = await createHost();
-    setOfferCode(offer);
-    setPlayer('X');
-    const url = `${getBaseUrl()}#offer=${offer}`;
-    setAppUrl(url);
-    setConnectionStep('host-offer-ready');
-  };
-
-  const handlePasteAnswer = async (answer: string) => {
-    if (!answer.trim()) return;
-    await completeConnection(answer.trim());
-    setConnectionStep('connected');
-  };
-
-  const handleGuestOfferDetected = async (offer: string, isReload: boolean = false) => {
-    // If this is a page reload, we can't restore the connection (peer connection is lost)
-    // Show the page-reloaded message instead
-    if (isReload) {
-      setConnectionStep('guest-page-reloaded');
-      return;
+  async function handleCreateHost() {
+    try {
+      const id = await createHost();
+      setRoomCode(id);
+      setPlayer(Math.random() < 0.5 ? 'X' : 'O');
+      setIsHost(true);
+      setConnectionStep('host-waiting');
+    } catch (err) {
+      console.error('Failed to create host', err);
     }
-    
-    setOfferCode(offer);
-    setConnectionStep('guest-offer-detected');
-    const answer = await joinGame(offer);
-    setPlayer('O');
-    setAnswerCode(answer);
-    
-    // Save to localStorage so we can detect page reloads
-    localStorage.setItem('ttt-offer', offer);
-    localStorage.setItem('ttt-answer', answer);
-    
-    setConnectionStep('guest-answer-ready');
-  };
+  }
 
-  const handleCellClick = (row: number, col: number) => {
+  async function handleJoinGame() {
+    if (!joinCode().trim()) return;
+    setIsJoining(true);
+    setJoinError('');
+    try {
+      await joinGame(joinCode().trim());
+    } catch (err) {
+      setJoinError('Failed to connect. Check the room code and try again.');
+      setIsJoining(false);
+    }
+  }
+
+  function handleCellClick(row: number, col: number) {
     if (!isMyTurn() || gameOver()) return;
     const newBoard = makeMove(board(), row, col, player()!);
     if (newBoard) {
@@ -108,39 +86,63 @@ const App: Component = () => {
         setCurrentPlayer(prev => prev === 'X' ? 'O' : 'X');
       }
     }
-  };
+  }
 
-  const handleRematch = () => {
+  function handleRematch() {
+    if (isHost()) {
+      const newAssignment = Math.random() < 0.5 ? 'X' : 'O';
+      setPlayer(newAssignment);
+      sendMessage({ type: 'assign', hostPlayer: newAssignment });
+    }
     setBoard(createInitialBoard());
     setWinningCells(null);
     setGameOver(false);
     setCurrentPlayer('X');
     sendMessage({ type: 'rematch' });
-  };
+  }
 
-  const handleSendChat = (text: string) => {
+  function handleSendChat(text: string) {
     sendMessage({ type: 'chat', text });
     setChatMessages(prev => [...prev, { text, isMe: true, player: player()! }]);
-  };
+  }
 
-  const handleResetScores = () => {
+  function handleResetScores() {
     setScore(createInitialScore());
     sendMessage({ type: 'reset-scores' });
-  };
+  }
 
   onConnect(() => {
-    // Clear saved state since connection is established
-    localStorage.removeItem('ttt-offer');
-    localStorage.removeItem('ttt-answer');
-    setConnectionStep('connected');
+    if (isHost()) {
+      sendMessage({ type: 'init', hostPlayer: player()! });
+      setConnectionStep('connected');
+    }
   });
 
   onDisconnect(() => {
     setConnectionStep('initial');
+    setBoard(createInitialBoard());
+    setCurrentPlayer('X');
+    setWinningCells(null);
+    setGameOver(false);
+    setPlayer(null);
+    setIsHost(false);
+    setChatMessages([]);
+    setScore(createInitialScore());
+    setRoomCode('');
+    setJoinCode('');
+    setIsJoining(false);
+    setJoinError('');
   });
 
   onMessage((message: Message) => {
     switch (message.type) {
+      case 'init': {
+        setPlayer(message.hostPlayer === 'X' ? 'O' : 'X');
+        setCurrentPlayer('X');
+        setIsJoining(false);
+        setConnectionStep('connected');
+        break;
+      }
       case 'move': {
         const newBoard = makeMove(board(), message.row, message.col, currentPlayer());
         if (newBoard) {
@@ -163,7 +165,16 @@ const App: Component = () => {
         }
         break;
       }
+      case 'assign': {
+        setPlayer(message.hostPlayer === 'X' ? 'O' : 'X');
+        break;
+      }
       case 'rematch': {
+        if (isHost()) {
+          const newAssignment = Math.random() < 0.5 ? 'X' : 'O';
+          setPlayer(newAssignment);
+          sendMessage({ type: 'assign', hostPlayer: newAssignment });
+        }
         setBoard(createInitialBoard());
         setWinningCells(null);
         setGameOver(false);
@@ -182,33 +193,6 @@ const App: Component = () => {
     }
   });
 
-  onMount(() => {
-    const hash = window.location.hash.slice(1);
-    if (hash.startsWith('offer=')) {
-      const offer = hash.slice(6);
-      
-      // Check if this is a page reload by looking for saved state
-      const savedOffer = localStorage.getItem('ttt-offer');
-      const savedAnswer = localStorage.getItem('ttt-answer');
-      
-      if (savedOffer === offer && savedAnswer) {
-        // Page reloaded, restore the state
-        handleGuestOfferDetected(offer, true);
-      } else {
-        // First time processing this offer
-        handleGuestOfferDetected(offer, false);
-      }
-    }
-  });
-
-  const renderStepIndicator = (step: number, total: number) => (
-    <div class="step-indicator">
-      {Array(total).fill(0).map((_, i) => (
-        <div class={`step-dot ${i + 1 === step ? 'active' : i + 1 < step ? 'completed' : ''}`} />
-      ))}
-    </div>
-  );
-
   return (
     <div class="app">
       <Switch>
@@ -218,109 +202,57 @@ const App: Component = () => {
             <div class="button-group">
               <button class="btn btn-primary" onClick={handleCreateHost}>Host Game</button>
             </div>
-          </div>
-        </Match>
-
-        <Match when={connectionStep() === 'host-offer-ready'}>
-          {renderStepIndicator(1, 3)}
-          <div class="status-indicator status-step-1">
-            Step 1: Share this code with your partner
-          </div>
-          <div class="connection-panel">
-            <Show when={!offerCode()} fallback={
-              <>
-                <QRCodeDisplay text={appUrl()} />
-                <div class="input-group" style="margin-top: 1rem;">
-                  <label>Copy this link to send to your partner:</label>
-                  <div style="display: flex; gap: 0.5rem; align-items: center;">
-                    <input type="text" value={appUrl()} readOnly style="flex: 1; padding: 0.5rem; border: 2px solid #e0d0ff; border-radius: 0.5rem; font-size: 0.8rem;" />
-                    <button class="btn btn-copy" onClick={() => handleCopy(appUrl())}>
-                      {copyStatus() || 'Copy'}
-                    </button>
-                  </div>
+            <div style="margin-top: 1rem; border-top: 1px solid #e0d0ff; padding-top: 1rem;">
+              <div class="input-group">
+                <label>Or join a game:</label>
+                <div style="display: flex; gap: 0.5rem;">
+                  <input
+                    type="text"
+                    value={joinCode()}
+                    onInput={(e) => setJoinCode(e.currentTarget.value)}
+                    placeholder="Enter room code..."
+                    disabled={isJoining()}
+                    style="flex: 1; padding: 0.5rem; border: 2px solid #e0d0ff; border-radius: 0.5rem; font-size: 0.8rem;"
+                  />
+                  <button class="btn btn-primary" onClick={handleJoinGame} disabled={isJoining() || !joinCode().trim()}>
+                    {isJoining() ? 'Joining...' : 'Join'}
+                  </button>
                 </div>
-                <div class="status-indicator status-step-2" style="margin-top: 1rem;">
-                  Step 2: Paste the answer code from your partner below
-                </div>
-                <div class="input-group" style="margin-top: 1rem;">
-                  <label>Paste answer code or URL here:</label>
-                  <div style="display: flex; gap: 0.5rem;">
-                    <input
-                      ref={pasteAnswerRef}
-                      type="text"
-                      placeholder="Paste answer code or URL here..."
-                      style="flex: 1; padding: 0.5rem; border: 2px solid #e0d0ff; border-radius: 0.5rem; font-size: 0.8rem;"
-                    />
-                    <button class="btn btn-primary" onClick={() => handlePasteAnswer(pasteAnswerRef?.value || '')}>Submit</button>
-                  </div>
-                </div>
-              </>
-            }>
-              <div class="loading-spinner">
-                <div class="spinner" />
-              </div>
-            </Show>
-          </div>
-        </Match>
-
-        <Match when={connectionStep() === 'guest-offer-detected'}>
-          {renderStepIndicator(2, 3)}
-          <div class="status-indicator status-step-2">
-            Step 2: Generating your answer code...
-          </div>
-          <div class="loading-spinner">
-            <div class="spinner" />
-          </div>
-        </Match>
-
-        <Match when={connectionStep() === 'guest-answer-ready'}>
-          {renderStepIndicator(2, 3)}
-          <div class="status-indicator status-step-2">
-            Step 2: Send this code to your partner
-          </div>
-          <div class="connection-panel">
-            <div class="input-group" style="margin-top: 1rem;">
-              <label>Copy this answer code to send to your partner:</label>
-              <div style="display: flex; gap: 0.5rem; align-items: center;">
-                <input type="text" value={answerCode()} readOnly style="flex: 1; padding: 0.5rem; border: 2px solid #e0d0ff; border-radius: 0.5rem; font-size: 0.8rem;" />
-                <button class="btn btn-copy" onClick={() => handleCopy(answerCode())}>
-                  {copyStatus() || 'Copy'}
-                </button>
+                <Show when={joinError()}>
+                  <p style="color: #dc3545; font-size: 0.85rem; margin-top: 0.25rem;">{joinError()}</p>
+                </Show>
               </div>
             </div>
-            <div class="status-indicator status-step-2" style="margin-top: 1rem;">
-              ⚠️ Don't close this page! After sending the code, wait here for the host to connect.
-            </div>
           </div>
         </Match>
 
-        <Match when={connectionStep() === 'guest-page-reloaded'}>
-          {renderStepIndicator(2, 3)}
-          <div class="status-indicator status-step-2">
-            Step 2: Page Reloaded
-          </div>
+        <Match when={connectionStep() === 'host-waiting'}>
           <div class="connection-panel" style="text-align: center;">
-            <p style="color: #856404; margin: 1rem 0; padding: 1rem; background-color: #fff3cd; border-radius: 0.75rem;">
-              ⚠️ The page reloaded and the connection was lost.
-              <br /><br />
-              Please ask your partner to create a new game and send you a new offer code.
-            </p>
-            <button class="btn btn-secondary" onClick={() => {
-              localStorage.removeItem('ttt-offer');
-              localStorage.removeItem('ttt-answer');
-              setConnectionStep('initial');
-            }}>
-              Start New Game
-            </button>
+            <h2>Your Room Code</h2>
+            <div
+              style="font-size: 3rem; font-weight: bold; color: #ff6b9d; padding: 1.5rem; background: #f9f0ff; border-radius: 1rem; margin: 1rem 0; letter-spacing: 0.25rem; user-select: all;"
+              onClick={() => handleCopy(roomCode())}
+            >
+              {roomCode()}
+            </div>
+            <div style="display: flex; gap: 0.5rem; justify-content: center; margin-bottom: 1rem;">
+              <button class="btn btn-copy" style="max-width: 200px;" onClick={() => handleCopy(roomCode())}>
+                {copyStatus() || 'Copy Code'}
+              </button>
+            </div>
+            <p style="color: #666;">Share this code with your partner to play!</p>
+            <div class="loading-spinner" style="margin-top: 1rem;">
+              <div class="spinner" />
+            </div>
+            <p style="color: #999; font-size: 0.9rem; margin-top: 0.5rem;">Waiting for partner to connect...</p>
           </div>
         </Match>
 
         <Match when={connectionStep() === 'connected'}>
-          {renderStepIndicator(3, 3)}
-          <div class="status-indicator status-step-3">
-            Step 3: Connected! You are {player()} ❤️
-          </div>
-          <div class="connected-content">
+          <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+            <div style="text-align: center; padding: 0.75rem; background-color: #d4edda; color: #155724; border-radius: 0.75rem; font-weight: bold;">
+              Connected! You are {player()} ❤️
+            </div>
             <GameBoard
               board={board()}
               onCellClick={handleCellClick}
@@ -329,10 +261,12 @@ const App: Component = () => {
               isMyTurn={isMyTurn()}
             />
             <Show when={gameOver()}>
-              <div class="game-over">
-                {checkWinner(board()) ? `${checkWinner(board())} Wins!` : 'Draw!'}
+              <div style="display: flex; flex-direction: column; align-items: center; gap: 0.75rem;">
+                <div class="game-over">
+                  {checkWinner(board()) ? `${checkWinner(board())} Wins!` : 'Draw!'}
+                </div>
+                <button class="rematch-btn" onClick={handleRematch}>Rematch</button>
               </div>
-              <button class="rematch-btn" onClick={handleRematch}>Rematch</button>
             </Show>
             <ScoreBoard score={score()} onReset={handleResetScores} />
             <Chat messages={chatMessages()} onSend={handleSendChat} />
@@ -341,6 +275,4 @@ const App: Component = () => {
       </Switch>
     </div>
   );
-};
-
-export default App;
+}
