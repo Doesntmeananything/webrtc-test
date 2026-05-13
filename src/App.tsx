@@ -53,13 +53,14 @@ export function App() {
   }
 
   async function handleJoinGame() {
-    if (!joinCode().trim()) return;
+    const code = joinCode().trim();
+    if (code.length !== 4 || !/^\d{4}$/.test(code)) return;
     setIsJoining(true);
     setJoinError('');
     try {
-      await joinGame(joinCode().trim());
+      await joinGame(code);
     } catch (err) {
-      setJoinError('Failed to connect. Check the room code and try again.');
+      setJoinError('Failed to connect. Check the code and try again.');
       setIsJoining(false);
     }
   }
@@ -209,10 +210,11 @@ export function App() {
                   <input
                     type="text"
                     value={joinCode()}
-                    onInput={(e) => setJoinCode(e.currentTarget.value)}
-                    placeholder="Enter room code..."
+                    onInput={(e) => setJoinCode(e.currentTarget.value.replace(/\D/g, '').slice(0, 4))}
+                    placeholder="Enter 4-digit code..."
+                    maxLength={4}
                     disabled={isJoining()}
-                    style="flex: 1; padding: 0.5rem; border: 2px solid #e0d0ff; border-radius: 0.5rem; font-size: 0.8rem;"
+                    style="flex: 1; padding: 0.5rem; border: 2px solid #e0d0ff; border-radius: 0.5rem; font-size: 0.8rem; text-align: center; letter-spacing: 0.25rem;"
                   />
                   <button class="btn btn-primary" onClick={handleJoinGame} disabled={isJoining() || !joinCode().trim()}>
                     {isJoining() ? 'Joining...' : 'Join'}

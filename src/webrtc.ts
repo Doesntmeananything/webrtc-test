@@ -37,25 +37,49 @@ function setupConnection(connection: DataConnection) {
   }
 }
 
+function generateCode(): string {
+  return String(Math.floor(1000 + Math.random() * 9000));
+}
+
 export async function createHost(): Promise<string> {
-  peer = new Peer();
+  let attempts = 0;
+  const maxAttempts = 10;
 
   return new Promise((resolve, reject) => {
-    peer!.on('open', (id: string) => {
-      resolve(id);
-    });
+    function tryCreate() {
+      if (attempts >= maxAttempts) {
+        reject(new Error('Could not find an available room code'));
+        return;
+      }
+      attempts++;
 
-    peer!.on('connection', (connection: DataConnection) => {
-      setupConnection(connection);
-    });
+      const code = generateCode();
+      peer = new Peer(code);
 
-    peer!.on('error', (err) => {
-      reject(err);
-    });
+      peer!.on('open', () => {
+        resolve(code);
+      });
+
+      peer!.on('connection', (connection: DataConnection) => {
+        setupConnection(connection);
+      });
+
+      peer!.on('error', (err) => {
+        if ((err as any).type === 'unavailable-id') {
+          peer?.destroy();
+          peer = null;
+          tryCreate();
+        } else {
+          reject(err);
+        }
+      });
+    }
+
+    tryCreate();
   });
 }
 
-export async function joinGame(hostId: string): Promise<void> {
+export async function joinGame(hostCode: string): Promise<void> {
   peer = new Peer();
 
   return new Promise((resolve, reject) => {
@@ -64,7 +88,7 @@ export async function joinGame(hostId: string): Promise<void> {
     }, 15000);
 
     peer!.on('open', () => {
-      const connection = peer!.connect(hostId);
+      const connection = peer!.connect(hostCode);
       setupConnection(connection);
       clearTimeout(timeout);
       resolve();
@@ -94,5 +118,3 @@ export function onConnect(callback: () => void): void {
 export function onDisconnect(callback: () => void): void {
   onDisconnectCallback = callback;
 }
-
-
